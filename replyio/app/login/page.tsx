@@ -60,7 +60,7 @@ export default function LoginPage() {
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', tracking: '0.05em', color: '#888888', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#888888', marginBottom: '6px' }}>
               Email Address
             </label>
             <input
@@ -81,7 +81,7 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', tracking: '0.05em', color: '#888888', marginBottom: '6px' }}>
+            <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#888888', marginBottom: '6px' }}>
               Password
             </label>
             <input
