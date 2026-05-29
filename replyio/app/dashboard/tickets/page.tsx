@@ -7,32 +7,20 @@ import { createClient } from "@/lib/supabase";
 
 interface Ticket {
   id: string;
-  student: string;
-  email: string;
+  ticket_number: string;
+  student_name: string;
+  student_email: string;
   subject: string;
-  status: 'Open' | 'In Progress' | 'Resolved';
-  priority: 'High' | 'Medium' | 'Low';
-  date: string;
+  status: string;
+  priority: string;
+  created_at: string;
 }
-
-const initialTickets: Ticket[] = [
-  { id: 'TK-001', student: 'Sarah Johnson', email: 'sarah.johnson@email.com', subject: 'How to access course materials?', status: 'Open', priority: 'High', date: '2 hours ago' },
-  { id: 'TK-002', student: 'Miguel Rodriguez', email: 'miguel.rodriguez@email.com', subject: 'Certificate generation issue', status: 'In Progress', priority: 'Medium', date: '4 hours ago' },
-  { id: 'TK-003', student: 'Emma Chen', email: 'emma.chen@email.com', subject: 'Payment method not accepted', status: 'Resolved', priority: 'High', date: 'Yesterday' },
-  { id: 'TK-004', student: 'James Wilson', email: 'james.wilson@email.com', subject: 'Can I get a refund?', status: 'Open', priority: 'Low', date: '1 day ago' },
-  { id: 'TK-005', student: 'Priya Patel', email: 'priya.patel@email.com', subject: 'Module 3 is not loading', status: 'In Progress', priority: 'High', date: '2 days ago' },
-  { id: 'TK-006', student: 'Alex Thompson', email: 'alex.thompson@email.com', subject: 'WSL2 environment setup error', status: 'Open', priority: 'High', date: '2 days ago' },
-  { id: 'TK-007', student: 'Sofia Martinez', email: 'sofia.martinez@email.com', subject: 'Inquiry about enterprise pricing', status: 'Resolved', priority: 'Low', date: '3 days ago' },
-  { id: 'TK-008', student: 'David Kim', email: 'david.kim@email.com', subject: 'API rate limits on free sandbox', status: 'In Progress', priority: 'Medium', date: '4 days ago' },
-  { id: 'TK-009', student: 'Chloe Dupont', email: 'chloe.dupont@email.com', subject: 'Incorrect invoice billing details', status: 'Open', priority: 'Medium', date: '5 days ago' },
-  { id: 'TK-010', student: 'Marcus Aurelius', email: 'marcus.aurelius@email.com', subject: 'Feedback on Chapter 4 exercises', status: 'Resolved', priority: 'Low', date: '1 week ago' },
-];
 
 export default function TicketsList() {
   const supabase = createClient();
   const router = useRouter();
 
-  const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Open' | 'In Progress' | 'Resolved'>('All');
   const [priorityFilter, setPriorityFilter] = useState<'All' | 'High' | 'Medium' | 'Low'>('All');
@@ -58,13 +46,23 @@ export default function TicketsList() {
     getUser();
   }, []);
 
+  useEffect(() => {
+    const fetchTickets = async () => {
+      const { data, error } = await supabase.from('tickets').select('*').order('created_at', { ascending: false });
+      if (data) {
+        setTickets(data);
+      }
+    };
+    fetchTickets();
+  }, []);
+
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
-      ticket.student.toLowerCase().includes(search.toLowerCase()) ||
-      ticket.subject.toLowerCase().includes(search.toLowerCase()) ||
-      ticket.id.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'All' || ticket.status === statusFilter;
-    const matchesPriority = priorityFilter === 'All' || ticket.priority === priorityFilter;
+      ticket.student_name?.toLowerCase().includes(search.toLowerCase()) ||
+      ticket.subject?.toLowerCase().includes(search.toLowerCase()) ||
+      ticket.ticket_number?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'All' || ticket.status.toLowerCase() === statusFilter.toLowerCase();
+    const matchesPriority = priorityFilter === 'All' || ticket.priority.toLowerCase() === priorityFilter.toLowerCase();
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
@@ -82,12 +80,13 @@ export default function TicketsList() {
   );
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Open':
+    switch (status.toLowerCase()) {
+      case 'open':
         return 'bg-red-50 text-red-700 border border-red-100';
-      case 'In Progress':
+      case 'in_progress':
+      case 'in progress':
         return 'bg-amber-50 text-amber-700 border border-amber-100';
-      case 'Resolved':
+      case 'resolved':
         return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       default:
         return 'bg-gray-50 text-gray-600 border border-gray-100';
@@ -95,36 +94,38 @@ export default function TicketsList() {
   };
 
   const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High':
+    switch (priority.toLowerCase()) {
+      case 'high':
         return 'text-red-600 font-medium';
-      case 'Medium':
+      case 'medium':
         return 'text-amber-600 font-medium';
-      case 'Low':
+      case 'low':
         return 'text-gray-500';
       default:
         return 'text-gray-500';
     }
   };
 
-  const handleCreateTicket = (e: React.FormEvent) => {
+  const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudent.trim() || !newEmail.trim() || !newSubject.trim()) return;
 
-    const newIdNum = tickets.length + 1;
-    const newId = `TK-${newIdNum.toString().padStart(3, '0')}`;
+    const ticketCount = await supabase.from('tickets').select('id', { count: 'exact' });
+    const count = ticketCount.count || 0;
+    const newId = `TK-${(count + 1).toString().padStart(3, '0')}`;
 
-    const newTicket: Ticket = {
-      id: newId,
-      student: newStudent,
-      email: newEmail,
+    const { data: newTicket, error } = await supabase.from('tickets').insert({
+      ticket_number: newId,
+      student_name: newStudent,
+      student_email: newEmail,
       subject: newSubject,
-      status: 'Open',
-      priority: newPriority,
-      date: 'Just now',
-    };
+      status: 'open',
+      priority: newPriority.toLowerCase(),
+    }).select().single();
 
-    setTickets([newTicket, ...tickets]);
+    if (newTicket) {
+      setTickets([newTicket, ...tickets]);
+    }
 
     setNewStudent('');
     setNewEmail('');
@@ -281,30 +282,30 @@ export default function TicketsList() {
                     paginatedTickets.map((ticket) => (
                       <tr
                         key={ticket.id}
-                        onClick={() => router.push(`/dashboard/tickets/${ticket.id}`)}
+                        onClick={() => router.push(`/dashboard/tickets/${ticket.ticket_number}`)}
                         className="hover:bg-[#FAFAFA] cursor-pointer transition-colors text-xs"
                       >
                         <td className="px-6 py-3.5 font-medium text-[#2563EB] hover:underline">
-                          {ticket.id}
+                          {ticket.ticket_number}
                         </td>
                         <td className="px-6 py-3.5 text-gray-900 font-medium">
-                          {ticket.student}
+                          {ticket.student_name}
                         </td>
                         <td className="px-6 py-3.5 text-gray-600 max-w-md truncate">
                           {ticket.subject}
                         </td>
                         <td className="px-6 py-3.5">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${getStatusColor(ticket.status)}`}>
-                            {ticket.status}
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${getStatusColor(ticket.status)} capitalize`}>
+                            {ticket.status.replace('_', ' ')}
                           </span>
                         </td>
-                        <td className="px-6 py-3.5">
+                        <td className="px-6 py-3.5 capitalize">
                           <span className={getPriorityColor(ticket.priority)}>
                             {ticket.priority}
                           </span>
                         </td>
                         <td className="px-6 py-3.5 text-gray-500">
-                          {ticket.date}
+                          {new Date(ticket.created_at).toLocaleDateString()}
                         </td>
                       </tr>
                     ))

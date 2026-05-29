@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: 'system',
-            content: `You are a helpful customer support assistant for an online academy.`
+            content: `You are a helpful customer support assistant for an online academy. Answer questions based on this context about the academy: ${context || 'No specific context provided yet.'}. Be friendly, concise and helpful. If you don't know something, say so honestly.`
           },
           {
             role: 'user',

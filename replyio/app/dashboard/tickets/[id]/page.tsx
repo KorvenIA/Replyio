@@ -2,17 +2,35 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { createClient } from "@/lib/supabase";
+
+interface Ticket {
+  id: string;
+  ticket_number: string;
+  student_name: string;
+  student_email: string;
+  subject: string;
+  status: string;
+  priority: string;
+  created_at: string;
+}
+
+interface Message {
+  id: string;
+  ticket_id: string;
+  sender_type: 'student' | 'academy' | 'bot';
+  content: string;
+  created_at: string;
+}
 
 export default function TicketDetail() {
   const supabase = createClient();
-  const [messages, setMessages] = useState([
-    { id: 1, author: 'Sarah Johnson', type: 'student', content: 'Hi, I\'ve been trying to access the course materials for Module 3, but I keep getting an error. Can you help me?', timestamp: '2 hours ago' },
-    { id: 2, author: 'Academy Support', type: 'academy', content: 'Hi Sarah! Thanks for reaching out. Can you tell me what error message you\'re seeing? This will help me diagnose the issue faster.', timestamp: '1.5 hours ago' },
-    { id: 3, author: 'Sarah Johnson', type: 'student', content: 'It says "Error 403: Access Denied". I\'ve already paid for the course and my account should be active.', timestamp: '1 hour ago' },
-    { id: 4, author: 'Academy Support', type: 'academy', content: 'Thank you for the details. I\'ve checked your account and found the issue. Your course access was pending verification. I\'ve manually approved it now, so you should be able to access Module 3 immediately. Please try refreshing your browser.', timestamp: '30 minutes ago' },
-  ]);
+  const params = useParams();
+  const id = params?.id as string;
 
+  const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [replyText, setReplyText] = useState('');
   const [ticketStatus, setTicketStatus] = useState('open');
   const [ticketPriority, setTicketPriority] = useState('high');
@@ -26,36 +44,85 @@ export default function TicketDetail() {
       }
     };
     getUser();
-  }, []);
+  }, [supabase]);
 
-  const handleSendReply = () => {
-    if (replyText.trim()) {
-      setMessages([...messages, {
-        id: messages.length + 1,
-        author: 'Academy Support',
-        type: 'academy',
+  useEffect(() => {
+    if (!id) return;
+    const fetchTicketData = async () => {
+      // Fetch ticket
+      const { data: ticketData, error: ticketError } = await supabase
+        .from('tickets')
+        .select('*')
+        .eq('ticket_number', id)
+        .single();
+        
+      if (ticketData) {
+        setTicket(ticketData);
+        setTicketStatus(ticketData.status);
+        setTicketPriority(ticketData.priority);
+        
+        // Fetch messages
+        const { data: messagesData } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('ticket_id', ticketData.id)
+          .order('created_at', { ascending: true });
+          
+        if (messagesData) {
+          setMessages(messagesData);
+        }
+      }
+    };
+    fetchTicketData();
+  }, [id, supabase]);
+
+  const handleSendReply = async () => {
+    if (replyText.trim() && ticket) {
+      const newMsg = {
+        ticket_id: ticket.id,
+        sender_type: 'academy',
         content: replyText,
-        timestamp: 'just now'
-      }]);
-      setReplyText('');
+      };
+      
+      const { data, error } = await supabase.from('messages').insert(newMsg).select().single();
+      
+      if (data) {
+        setMessages([...messages, data]);
+        setReplyText('');
+      }
+    }
+  };
+
+  const handleSaveChanges = async () => {
+    if (ticket) {
+      await supabase.from('tickets')
+        .update({ status: ticketStatus, priority: ticketPriority })
+        .eq('id', ticket.id);
+      alert('Changes saved!');
     }
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'open':
-      case 'Open':
         return 'bg-red-50 text-red-700 border border-red-100';
       case 'in_progress':
-      case 'In Progress':
+      case 'in progress':
         return 'bg-amber-50 text-amber-700 border border-amber-100';
       case 'resolved':
-      case 'Resolved':
         return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
       default:
         return 'bg-gray-50 text-gray-600 border border-gray-100';
     }
   };
+
+  if (!ticket) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#FFFFFF] text-[#1A1A1A]">
+        <p>Loading ticket details...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-[#FFFFFF] text-[#1A1A1A] font-sans antialiased overflow-hidden">
@@ -76,7 +143,7 @@ export default function TicketDetail() {
             </Link>
             <Link href="/dashboard/tickets" className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-[#EFF6FF] text-[#2563EB] text-sm font-medium transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012 2h6a2 2 0 012 2v2M7 7h10" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
               Tickets
             </Link>
@@ -118,9 +185,9 @@ export default function TicketDetail() {
               Back to Tickets
             </Link>
             <div className="w-px h-4 bg-gray-300"></div>
-            <span className="text-sm font-semibold text-gray-900">TK-001</span>
-            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${getStatusColor(ticketStatus)}`}>
-              {ticketStatus === 'open' ? 'Open' : ticketStatus === 'in_progress' ? 'In Progress' : 'Resolved'}
+            <span className="text-sm font-semibold text-gray-900">{ticket.ticket_number}</span>
+            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium border ${getStatusColor(ticketStatus)} capitalize`}>
+              {ticketStatus.replace('_', ' ')}
             </span>
           </div>
         </div>
@@ -131,21 +198,27 @@ export default function TicketDetail() {
           <div className="flex-1 flex flex-col min-w-0">
             {/* Messages Container */}
             <div className="flex-1 overflow-y-auto mb-6 space-y-4 pr-4 text-xs">
-              {messages.map((message) => (
-                <div key={message.id} className={`flex ${message.type === 'academy' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-xs lg:max-w-md px-3.5 py-2.5 rounded-lg border ${
-                    message.type === 'academy'
-                      ? 'bg-[#EFF6FF] text-[#1e40af] border-[#bfdbfe]'
-                      : 'bg-[#F7F7F7] text-gray-900 border-[#E5E5E5]'
-                  }`}>
-                    <p className="font-semibold mb-1">{message.author}</p>
-                    <p className="leading-relaxed mb-2">{message.content}</p>
-                    <p className="text-[10px] text-gray-400">
-                      {message.timestamp}
-                    </p>
+              {messages.length === 0 ? (
+                <div className="text-center text-gray-500 py-10">No messages yet.</div>
+              ) : (
+                messages.map((message) => (
+                  <div key={message.id} className={`flex ${message.sender_type === 'academy' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-xs lg:max-w-md px-3.5 py-2.5 rounded-lg border ${
+                      message.sender_type === 'academy'
+                        ? 'bg-[#EFF6FF] text-[#1e40af] border-[#bfdbfe]'
+                        : 'bg-[#F7F7F7] text-gray-900 border-[#E5E5E5]'
+                    }`}>
+                      <p className="font-semibold mb-1">
+                        {message.sender_type === 'academy' ? 'Academy Support' : message.sender_type === 'bot' ? 'AI Assistant' : ticket.student_name}
+                      </p>
+                      <p className="leading-relaxed mb-2">{message.content}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(message.created_at).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             {/* Reply Box */}
@@ -175,17 +248,22 @@ export default function TicketDetail() {
               
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Student</p>
-                <p className="font-medium text-gray-900">Sarah Johnson</p>
+                <p className="font-medium text-gray-900">{ticket.student_name}</p>
               </div>
 
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Email</p>
-                <p className="text-gray-600">sarah.johnson@email.com</p>
+                <p className="text-gray-600">{ticket.student_email}</p>
+              </div>
+              
+              <div>
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Subject</p>
+                <p className="text-gray-600 break-words">{ticket.subject}</p>
               </div>
 
               <div>
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Date Created</p>
-                <p className="text-gray-600">May 27, 2026 at 2:30 PM</p>
+                <p className="text-gray-600">{new Date(ticket.created_at).toLocaleString()}</p>
               </div>
 
               <div>
@@ -193,7 +271,7 @@ export default function TicketDetail() {
                 <select
                   value={ticketPriority}
                   onChange={(e) => setTicketPriority(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-[#E5E5E5] bg-white rounded-md text-xs text-gray-700 focus:outline-none cursor-pointer"
+                  className="w-full px-2 py-1.5 border border-[#E5E5E5] bg-white rounded-md text-xs text-gray-700 focus:outline-none cursor-pointer capitalize"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -206,7 +284,7 @@ export default function TicketDetail() {
                 <select
                   value={ticketStatus}
                   onChange={(e) => setTicketStatus(e.target.value)}
-                  className="w-full px-2 py-1.5 border border-[#E5E5E5] bg-white rounded-md text-xs text-gray-700 focus:outline-none cursor-pointer"
+                  className="w-full px-2 py-1.5 border border-[#E5E5E5] bg-white rounded-md text-xs text-gray-700 focus:outline-none cursor-pointer capitalize"
                 >
                   <option value="open">Open</option>
                   <option value="in_progress">In Progress</option>
@@ -214,7 +292,7 @@ export default function TicketDetail() {
                 </select>
               </div>
 
-              <button className="w-full py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white rounded-md font-medium text-xs transition-colors">
+              <button onClick={handleSaveChanges} className="w-full py-1.5 bg-[#2563EB] hover:bg-blue-700 text-white rounded-md font-medium text-xs transition-colors cursor-pointer">
                 Save Changes
               </button>
             </div>
