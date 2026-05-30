@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, context } = await request.json()
-    
+    const { message } = await request.json()
+
     console.log('API Key exists:', !!process.env.GROQ_API_KEY)
     console.log('Message received:', message)
+
+    // Fetch all documents from Knowledge Base
+    const { data: documents, error: docsError } = await supabase
+      .from('documents')
+      .select('content, name')
+
+    if (docsError) {
+      console.error('Error fetching documents:', docsError)
+    }
+
+    const documentContext = documents
+      ?.map(doc => `From ${doc.name}:\n${doc.content}`)
+      .join('\n\n') || 'No documents available'
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -18,7 +37,12 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: 'system',
-            content: `You are a helpful customer support assistant for an online academy. Answer questions based on this context about the academy: ${context || 'No specific context provided yet.'}. Be friendly, concise and helpful. If you don't know something, say so honestly.`
+            content: `You are a helpful customer support assistant for an online academy. 
+Use this information from the academy's documents to answer questions accurately:
+
+${documentContext}
+
+If the answer is not in the documents, say so honestly and offer general help.`
           },
           {
             role: 'user',
@@ -31,7 +55,6 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json()
     console.log('Groq response status:', response.status)
-    console.log('Groq response data:', JSON.stringify(data))
 
     const reply = data.choices?.[0]?.message?.content || 'Sorry, I could not process your request.'
     return NextResponse.json({ reply })

@@ -1,39 +1,27 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { createClient } from "@/lib/supabase";
 
 interface DocumentFile {
   id: string;
   name: string;
-  extension: 'pdf' | 'docx';
-  size: string;
-  date: string;
+  file_type: string;
+  file_size: string;
+  uploaded_at: string;
   content: string;
 }
 
-const initialDocuments: DocumentFile[] = [
-  { id: 'DOC-001', name: 'Course FAQ 2026.pdf', extension: 'pdf', size: '1.2 MB', date: 'May 25, 2026', content: 'This document contains the Frequently Asked Questions for the 2026 Academy Courses, detailing system requirements, schedule policies, exam formats, and teacher support hours. All students should read this prior to starting Module 1.' },
-  { id: 'DOC-002', name: 'Pricing Guide.pdf', extension: 'pdf', size: '840 KB', date: 'May 24, 2026', content: 'Our 2026 Pricing Guide covers basic subscription tiers, enterprise packages, student discount coupons, installment plans, and regional pricing adjustments. Currency rates and platform transaction taxes are listed on Page 4.' },
-  { id: 'DOC-003', name: 'Refund Policy.docx', extension: 'docx', size: '120 KB', date: 'May 22, 2026', content: 'Refund Policy: Students are eligible for a 100% money-back guarantee within 14 days of purchase, provided they have completed less than 20% of course lessons. Submit requests directly via billing@academy.com.' },
-  { id: 'DOC-004', name: 'Syllabus - Javascript Basics.pdf', extension: 'pdf', size: '2.4 MB', date: 'May 20, 2026', content: 'Javascript Basics Syllabus covering: Variables, Scope, Control Flow, Arrays, Object Prototypes, Asynchronous JavaScript (Promises & async/await), and modern ES6+ paradigms. Includes 12 practice exercises and a final project.' },
-  { id: 'DOC-005', name: 'Student Handbook.pdf', extension: 'pdf', size: '4.1 MB', date: 'May 15, 2026', content: 'Official Student Handbook covering code of conduct, grading criteria, certificate eligibility criteria, forum moderation guidelines, and plagiarism policy. Violation of these policies may result in account termination.' },
-  { id: 'DOC-006', name: 'API Integration Sandbox Guide.pdf', extension: 'pdf', size: '1.8 MB', date: 'May 12, 2026', content: 'API Sandbox Guide: Details rate limiting headers, sandbox authentication keys, webhook signature validations, and testing mock JSON payloads for all academy REST endpoints. Production endpoints require verification.' },
-  { id: 'DOC-007', name: 'Welcome Package.docx', extension: 'docx', size: '310 KB', date: 'May 10, 2026', content: 'Welcome to the Academy! This package contains Discord server invitations, initial workspace setup checklists, Git workflow configurations, and calendar invites for weekly live programming office hours.' },
-  { id: 'DOC-008', name: 'Support Guidelines.pdf', extension: 'pdf', size: '650 KB', date: 'May 05, 2026', content: 'Guidelines for student support queries. Details ticket response SLA guarantees (High: 4 hours, Medium: 12 hours, Low: 24 hours), how to request code reviews, and acceptable formats for logs and screenshots.' },
-];
-
 export default function KnowledgeBase() {
   const supabase = createClient();
-  const [documents, setDocuments] = useState<DocumentFile[]>(initialDocuments);
+  const [documents, setDocuments] = useState<DocumentFile[]>([]);
   const [lastUpdated, setLastUpdated] = useState('Today');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [activeViewDoc, setActiveViewDoc] = useState<DocumentFile | null>(null);
 
-  const [uploadName, setUploadName] = useState('');
-  const [uploadExtension, setUploadExtension] = useState<'pdf' | 'docx'>('pdf');
-  const [uploadSize, setUploadSize] = useState('450 KB');
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [userEmail, setUserEmail] = useState<string>("");
@@ -48,7 +36,23 @@ export default function KnowledgeBase() {
     getUser();
   }, []);
 
-  const handleDeleteDoc = (id: string, name: string) => {
+  const fetchDocuments = useCallback(async () => {
+    const { data, error } = await supabase.from('documents').select('*').order('uploaded_at', { ascending: false });
+    if (data) {
+      setDocuments(data);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
+
+  const handleDeleteDoc = async (id: string, name: string) => {
+    const { error } = await supabase.from('documents').delete().eq('id', id);
+    if (error) {
+      alert('Error deleting document');
+      return;
+    }
     setDocuments(documents.filter((doc) => doc.id !== id));
     setToastMessage(`"${name}" deleted successfully.`);
     setShowToast(true);
@@ -57,40 +61,37 @@ export default function KnowledgeBase() {
     }, 3000);
   };
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadName.trim()) return;
+    if (!fileToUpload) return;
+    setIsUploading(true);
 
-    let finalizedName = uploadName.trim();
-    if (!finalizedName.toLowerCase().endsWith(`.${uploadExtension}`)) {
-      finalizedName += `.${uploadExtension}`;
+    const formData = new FormData();
+    formData.append('file', fileToUpload);
+
+    try {
+      const response = await fetch('/api/knowledge', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      
+      if (response.ok && data.document) {
+        await fetchDocuments();
+        setLastUpdated('Just now');
+        setIsUploadOpen(false);
+        setFileToUpload(null);
+        setToastMessage(`"${data.document.name}" uploaded and trained successfully.`);
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      } else {
+        alert(data.error || 'Upload failed');
+      }
+    } catch (err) {
+      alert('Upload failed');
+    } finally {
+      setIsUploading(false);
     }
-
-    const newIdNum = documents.length + 1;
-    const newId = `DOC-${newIdNum.toString().padStart(3, '0')}`;
-
-    const newDoc: DocumentFile = {
-      id: newId,
-      name: finalizedName,
-      extension: uploadExtension,
-      size: uploadSize,
-      date: 'May 27, 2026',
-      content: `This is a mock training document uploaded for "${finalizedName}". This file will be processed, chunked, and embedded into the vector database to train the AI Support Chatbot context.`,
-    };
-
-    setDocuments([newDoc, ...documents]);
-    setLastUpdated('Just now');
-    setIsUploadOpen(false);
-
-    setUploadName('');
-    setUploadExtension('pdf');
-    setUploadSize('450 KB');
-
-    setToastMessage(`"${finalizedName}" uploaded and trained successfully.`);
-    setShowToast(true);
-    setTimeout(() => {
-      setShowToast(false);
-    }, 3000);
   };
 
   return (
@@ -122,12 +123,22 @@ export default function KnowledgeBase() {
               </svg>
               Knowledge Base
             </Link>
+
+            <div className="pt-3 pb-1">
+              <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Settings</p>
+            </div>
             <Link href="/dashboard/settings" className="flex items-center gap-2.5 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-[#1A1A1A] text-sm font-medium transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              Settings
+              General
+            </Link>
+            <Link href="/dashboard/company-settings" className="flex items-center gap-2.5 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-[#1A1A1A] text-sm font-medium transition-colors">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              Company
             </Link>
           </div>
         </nav>
@@ -189,7 +200,7 @@ export default function KnowledgeBase() {
             {documents.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {documents.map((doc) => {
-                  const isPdf = doc.extension === 'pdf';
+                  const isPdf = doc.file_type === 'pdf';
                   return (
                     <div
                       key={doc.id}
@@ -200,9 +211,9 @@ export default function KnowledgeBase() {
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase ${
                             isPdf ? 'bg-red-500' : 'bg-blue-500'
                           }`}>
-                            {doc.extension}
+                            {doc.file_type}
                           </span>
-                          <span className="text-[10px] text-gray-400 font-medium">{doc.size}</span>
+                          <span className="text-[10px] text-gray-400 font-medium">{doc.file_size}</span>
                         </div>
                         <h3 className="text-xs font-semibold text-gray-900 mt-2.5 line-clamp-1">{doc.name}</h3>
                         <p className="text-[11px] text-gray-500 line-clamp-2 mt-2 leading-relaxed bg-[#F7F7F7] p-2 rounded border border-[#E5E5E5]">
@@ -275,58 +286,15 @@ export default function KnowledgeBase() {
             {/* Form */}
             <form onSubmit={handleUploadSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Document Name</label>
+                <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">PDF File</label>
                 <input
-                  type="text"
+                  type="file"
+                  accept=".pdf"
                   required
-                  value={uploadName}
-                  onChange={(e) => setUploadName(e.target.value)}
-                  placeholder="e.g. Grading Guidelines"
+                  onChange={(e) => setFileToUpload(e.target.files?.[0] || null)}
                   className="px-3 py-2 border border-[#E5E5E5] rounded-md text-xs text-gray-800 focus:outline-none focus:border-gray-400"
                 />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Document Format</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className={`border rounded-md p-2 flex items-center justify-center gap-2 cursor-pointer transition-colors text-xs ${
-                    uploadExtension === 'pdf' ? 'border-[#2563EB] text-[#2563EB] font-medium' : 'border-[#E5E5E5] text-gray-500'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="extension"
-                      checked={uploadExtension === 'pdf'}
-                      onChange={() => setUploadExtension('pdf')}
-                      className="sr-only"
-                    />
-                    <span>PDF</span>
-                  </label>
-                  <label className={`border rounded-md p-2 flex items-center justify-center gap-2 cursor-pointer transition-colors text-xs ${
-                    uploadExtension === 'docx' ? 'border-[#2563EB] text-[#2563EB] font-medium' : 'border-[#E5E5E5] text-gray-500'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="extension"
-                      checked={uploadExtension === 'docx'}
-                      onChange={() => setUploadExtension('docx')}
-                      className="sr-only"
-                    />
-                    <span>DOCX</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">File Size</label>
-                <select
-                  value={uploadSize}
-                  onChange={(e) => setUploadSize(e.target.value)}
-                  className="w-full px-2.5 py-2 border border-[#E5E5E5] bg-white rounded-md text-xs text-gray-700 focus:outline-none cursor-pointer"
-                >
-                  <option value="120 KB">120 KB</option>
-                  <option value="450 KB">450 KB</option>
-                  <option value="1.5 MB">1.5 MB</option>
-                </select>
+                <p className="text-[10px] text-gray-400 mt-1">Only PDF files are supported.</p>
               </div>
 
               <div className="pt-4 flex gap-3">
@@ -339,9 +307,10 @@ export default function KnowledgeBase() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-medium rounded-md cursor-pointer"
+                  disabled={isUploading}
+                  className="flex-1 py-2 bg-[#2563EB] hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-md cursor-pointer flex items-center justify-center"
                 >
-                  Upload & Train
+                  {isUploading ? 'Uploading...' : 'Upload & Train'}
                 </button>
               </div>
             </form>
