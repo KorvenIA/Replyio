@@ -42,6 +42,11 @@ export async function POST(request: NextRequest) {
         </div>
         <div class="content">
           <p>${message}</p>
+          <p style="margin-top: 30px; text-align: center;">
+            <a href="http://localhost:3000/feedback/${ticketNumber}" style="background: #2563EB; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px;">
+              Rate our response
+            </a>
+          </p>
         </div>
         <div class="footer">
           <p><strong>${settings?.company_name || 'Company'}</strong></p>

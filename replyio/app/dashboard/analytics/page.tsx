@@ -17,6 +17,9 @@ export default function Analytics() {
   const [statusCounts, setStatusCounts] = useState({ open: 0, inProgress: 0, resolved: 0 });
   const [recentTickets, setRecentTickets] = useState<any[]>([]);
   const [topQuestions, setTopQuestions] = useState<any[]>([]);
+  
+  const [avgBotRating, setAvgBotRating] = useState<string>('No ratings yet');
+  const [recentRatings, setRecentRatings] = useState<any[]>([]);
 
   useEffect(() => {
     const getUser = async () => {
@@ -95,6 +98,21 @@ export default function Analytics() {
             "Is there a community forum?"
           ]);
         }
+      }
+
+      // Fetch ratings
+      const { data: ratings } = await supabase
+        .from('ratings')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (ratings) {
+        const avgRating = ratings?.length > 0
+          ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1)
+          : 'No ratings yet';
+        setAvgBotRating(avgRating);
+        setRecentRatings(ratings);
       }
 
       setIsLoading(false);
@@ -301,6 +319,55 @@ export default function Analytics() {
                       {recentTickets.length === 0 && (
                         <tr>
                           <td colSpan={5} className="px-5 py-8 text-center text-gray-400">No recent tickets</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Feedback & Ratings */}
+              <div className="bg-white rounded-lg border border-[#E5E5E5] shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#E5E5E5] flex justify-between items-center">
+                  <h3 className="text-sm font-semibold text-gray-900">Feedback & Ratings</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">Average Bot Rating:</span>
+                    <span className="text-sm font-semibold text-gray-900">{avgBotRating !== 'No ratings yet' ? avgBotRating : '-'}</span>
+                    <span className="text-amber-400 text-sm">⭐</span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs whitespace-nowrap">
+                    <thead className="bg-[#F7F7F7] border-b border-[#E5E5E5]">
+                      <tr>
+                        <th className="px-5 py-2.5 font-medium text-gray-500">Rating</th>
+                        <th className="px-5 py-2.5 font-medium text-gray-500 w-full">Comment</th>
+                        <th className="px-5 py-2.5 font-medium text-gray-500">Type</th>
+                        <th className="px-5 py-2.5 font-medium text-gray-500">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E5E5E5]">
+                      {recentRatings.map(r => (
+                        <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-5 py-3">
+                            <div className="flex text-amber-400">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <span key={i} className={i < r.rating ? 'text-amber-400' : 'text-gray-200'}>★</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-gray-600 truncate max-w-md">{r.comment || <span className="text-gray-400 italic">No comment</span>}</td>
+                          <td className="px-5 py-3">
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-100 capitalize">
+                              {r.rating_type?.replace('_', ' ') || 'Unknown'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-gray-500">{new Date(r.created_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                      {recentRatings.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-5 py-8 text-center text-gray-400">No ratings yet</td>
                         </tr>
                       )}
                     </tbody>
